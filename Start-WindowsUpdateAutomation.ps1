@@ -3,9 +3,12 @@
   This script is used to fully automate the deployment of Windows updates for patching vmware templates/images 
 
 .DESCRIPTION
-  For full automation, taking advantage of Microsoft Windows Management Framework 5.1.  https://www.microsoft.com/en-us/download/details.aspx?id=54616
+  Microsoft Windows Management Framework 5.1 or above required.  https://www.microsoft.com/en-us/download/details.aspx?id=54616
   Powershell 3.0 and above required.
-  Installs most recent versions of package provider nuget, and module PSWindowsUpdate.
+  Installs most recent versions of package provider nuget and module PSWindowsUpdate.
+  
+  This version of the script is the first stepping stone to fully automate the application of Windows Updates to Windows templates in a VMware virtual environment.
+  Version 1.x is intended to be run on individual computers connected to the internet.
 
 .PARAMETER <Parameter_Name>
   None
@@ -14,12 +17,12 @@
   None
 
 .OUTPUTS Log File
-  The script log file stored in C:\Windows\Temp\<name>.log
+  None
 
 .NOTES
-  Version:			1.0
+  Version:			1.1
   Author:			Ted Wagner
-  Creation Date:	02/06/2018 (initial draft)
+  Creation Date:	02/14/2018 (alpha framework)
   Purpose/Change:	Initial script development
   Important:		FIPS must be disabled
   Requirements:		PowerShell 3.0 and above, run as administrator
