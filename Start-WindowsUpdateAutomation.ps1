@@ -20,9 +20,9 @@
   None
 
 .NOTES
-  Version:			1.1
+  Version:			0.3
   Author:			Ted Wagner
-  Creation Date:	02/14/2018 (alpha framework)
+  Creation Date:	02/16/2018 (alpha framework)
   Purpose/Change:	Initial script development
   Important:		FIPS must be disabled
   Requirements:		PowerShell 3.0 and above, run as administrator
@@ -38,16 +38,29 @@
   Get-WUInstall -MicrosoftUpdate -UpdateCount 30
 
 .EXAMPLE
-  .\Start-WindowsUpdateAutomation
+  .\Start-WindowsUpdateAutomation.ps1
 #>
 
-#Requires -RunAsAdministrator -Version 3.0
+#Requires -RunAsAdministrato
+#Requires -Version 3.0
 
 # Design Notes
 # Step 1: Check FIPS
 # Step 2: Invoke PSSession localhost and install and or update modules.
 # Step 3: Invoke PSSession localhost and run windows updates, accept all, and restart
-# Step 4: If FIPS was enabled, re-enable.
+# Step 4: Using workflows, invoke PSSession on localhost again and re-run windows updates.
+# https://blogs.technet.microsoft.com/heyscriptingguy/2013/01/23/powershell-workflows-restarting-the-computer/
+# Step 5: If FIPS was enabled, re-enable.
+
+Function Test-InternetConnection {
+	# Check internet connection
+	$PingResult = Test-Connection -Count 2 -ErrorAction SilentlyContinue -Quiet download.microsoft.com
+	If (!($PingResult)){
+		Write-Host "This script requires an internet connection."
+		# Exit in function, end terminate script but not close console.
+		Exit
+	}
+}
 
 Function Check-FIPSValue {
 	# FIPS check required at this time (February 2018) for proper install of nuget
@@ -65,26 +78,30 @@ Function Disable-FIPSValue {
 }
 
 Function Check-WMF{
-    # If PS 3 or 4 prompt to install WMF 5.x
-    If ($PSVersionTable.PSVersion.Major -lt "5" -and $PSVersionTable.PSVersion.Major -ge "3"){
-        Clear-Host
-        Write-Host "This script requires Windows Management Framework 5 or above." -ForegroundColor Yellow; Write-Host "Please install https://www.microsoft.com/en-us/download/details.aspx?id=54616";Write-Host ""
-        $Global:Control = $false
-    }
-    Else{
-        # Not needed with requires statement, insurance
-        Write-Host "This script requires PowerShell 3.0 or above." -ForegroundColor Red;Write-Host ""
-        $Global:Control = $false
-    }
+ # If PS version 3 or 4, prompt to install WMF 5.x
+If ($PSVersionTable.PSVersion.Major -lt "5"){
+	Clear-Host
+	Write-Host "This script requires Windows Management Framework 5 or above." -ForegroundColor Yellow; Write-Host "Please install https://www.microsoft.com/en-us/download/details.aspx?id=54616";Write-Host ""
+	$Global:Control = $false
+	# Exit in function, end terminate script but not close console.
+	Exit
+}
 }
 
 Function Install-PMandPSWindowsUpdate {
 	# Create Session and install/update NuGet and PSWindowsUpdate
 	$Session = New-PSSession -ComputerName "Localhost"
 	Invoke-Command -Session $Session -ScriptBlock {
-		Import-Module PackageManagement
-		Install-PackageProvider -Name NuGet -Force -Confirm:$False | Out-Null
-		Install-Module -Name PSWindowsUpdate -Force -Confirm:$False | Out-Null
+		Try{
+			Import-Module PackageManagement
+			Install-PackageProvider -Name NuGet -Force -Confirm:$False | Out-Null
+			Install-Module -Name PSWindowsUpdate -Force -Confirm:$False | Out-Null
+		}
+		Catch{
+			Remove-PSSession $Session
+			Remove-Module -Name PSWindowsUpdate
+			return $_
+		}
 	}
 }
 
@@ -98,8 +115,8 @@ Function Start-InstallAllUpdates {
 			Get-WUInstall -AcceptAll -AutoReboot -Confirm:$False
 		}
 		Else{
-			Write-Host "No Windows Updates to Install"
-			Break
+			# Exit in function, end terminate script but not close console.
+			Exit
 		}
 	}
 }
@@ -110,31 +127,42 @@ $Global:Control = $true
 # Global variable to save original FIPS setting
 $Global:FIPSValue = Check-FIPSValue
 
+<# Make sure a connection to the internet exists #>
+Test-InternetConnection
 
 <# Check PS Version for WMF version compatibility #>
 Check-WMF
 
 <# Check FIPS.  If enabled, disable. #>
 If ($Global:Control){
-    $Global:FIPSValue = Check-FIPSValue
-    If ($Global:FIPSValue -eq "1"){
-	    Disable-FIPSValue
-    }
+	$Global:FIPSValue = Check-FIPSValue
+	If ($Global:FIPSValue -eq "1"){
+		Disable-FIPSValue
+	}
 }
 
 <# Install and update modules #>
 If ($Global:Control){
-    Install-PMandPSWindowsUpdate
+	Install-PMandPSWindowsUpdate
 }
 
-
 <# Perform Windows Updates #>
+Start-InstallAllUpdates
+
+<# Need new function to pick up and check again after a restart #>
+
+<# Finished with Windows Updates, start cleanup phase #>
 
 <# Check FIPS #>
 # If FIPS was enabled at script start, re-enable
+<#
 If ($Global:FIPSValue -eq "1"){
 	Enable-FIPSValue
 }
+#>
+
 
 <# End #>
+
+
 
