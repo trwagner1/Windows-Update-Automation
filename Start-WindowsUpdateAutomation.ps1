@@ -41,7 +41,7 @@
   .\Start-WindowsUpdateAutomation.ps1
 #>
 
-#Requires -RunAsAdministrato
+#Requires -RunAsAdministrator
 #Requires -Version 3.0
 
 # Design Notes
