@@ -20,9 +20,10 @@
   None
 
 .NOTES
-  Version:			0.3
+  Version:			0.0.4
   Author:			Ted Wagner
   Creation Date:	02/16/2018 (alpha framework)
+  Revision Date:	03/23/2018
   Purpose/Change:	Initial script development
   Important:		FIPS must be disabled
   Requirements:		PowerShell 3.0 and above, run as administrator
@@ -46,8 +47,8 @@
 
 # Design Notes
 # Step 1: Check FIPS
-# Step 2: Invoke PSSession localhost and install and or update modules.
-# Step 3: Invoke PSSession localhost and run windows updates, accept all, and restart
+# Step 2: install and/or update modules.
+# Step 3: run windows updates, accept important (ignore optional), and restart
 # Step 4: Using workflows, invoke PSSession on localhost again and re-run windows updates.
 # https://blogs.technet.microsoft.com/heyscriptingguy/2013/01/23/powershell-workflows-restarting-the-computer/
 # Step 5: If FIPS was enabled, re-enable.
@@ -89,36 +90,39 @@ If ($PSVersionTable.PSVersion.Major -lt "5"){
 }
 
 Function Install-PMandPSWindowsUpdate {
-	# Create Session and install/update NuGet and PSWindowsUpdate
-	$Session = New-PSSession -ComputerName "Localhost"
-	Invoke-Command -Session $Session -ScriptBlock {
-		Try{
-			Import-Module PackageManagement
-			Install-PackageProvider -Name NuGet -Force -Confirm:$False | Out-Null
-			Install-Module -Name PSWindowsUpdate -Force -Confirm:$False | Out-Null
-		}
-		Catch{
-			Remove-PSSession $Session
-			Remove-Module -Name PSWindowsUpdate
-			return $_
-		}
+	# Install/update NuGet and PSWindowsUpdate
+	Try{
+		Import-Module PackageManagement
+		Install-PackageProvider -Name NuGet -Force -Confirm:$False | Out-Null
+		Install-Module -Name PSWindowsUpdate -Force -Confirm:$False | Out-Null
+	}
+	Catch{
+		Remove-Module -Name PSWindowsUpdate
+		return $_
 	}
 }
 
-# Check for available updates, if available, then install.  Use Get-WindowsUpdate by itself to get a count.
+
+# Check for available updates, if available, then install.  Install only autoselected updates (omit optional updates).
+# Use verbose switch for testing
+# If local WSUS or SCCM, default source is "Windows Update" and that should be reflected in verbose output.
 Function Start-InstallAllUpdates {
-	$Session = New-PSSession -ComputerName "Localhost"
-	Invoke-Command -Session $Session -ScriptBlock {
-		Import-Module PSWindowsUpdate
-		$WUCount = Get-WindowsUpdate
-		If ($WUCount -gt "0"){
-			Get-WUInstall -AcceptAll -AutoReboot -Confirm:$False
-		}
-		Else{
-			# Exit in function, end terminate script but not close console.
-			Exit
-		}
+	Import-Module PSWindowsUpdate
+	$WUCount = (Get-WindowsUpdate).count
+	If ($WUCount -gt "0"){
+		Get-WUInstall -Install -AutoSelectOnly -AutoReboot -Confirm:$False -Verbose
 	}
+	Else{
+		# Exit in function, end terminate script but not close console.
+		Write-Host "No updates to install.  Nothing to do"
+        Remove-Module PSWindowsUpdate
+		Exit
+	}
+}
+
+# Remove & cleanup PowerShell sessions
+Function Close-AllSessions {
+	Get-PsSession |?{$s.State.value__ -ne 2 -or $_.Availability -ne 1}|Remove-PSSession
 }
 
 # Global variable for run control.
@@ -137,7 +141,8 @@ Check-WMF
 If ($Global:Control){
 	$Global:FIPSValue = Check-FIPSValue
 	If ($Global:FIPSValue -eq "1"){
-		Disable-FIPSValue
+		Write-host "Unable to proceed.  The PSWindowsUpdate module will not work with FIPS enabled" -ForegroundColor "Yellow" -BackgroundColor "Black"
+		#Disable-FIPSValue
 	}
 }
 
@@ -161,7 +166,7 @@ If ($Global:FIPSValue -eq "1"){
 }
 #>
 
-
+Close-AllSessions
 <# End #>
 
 
